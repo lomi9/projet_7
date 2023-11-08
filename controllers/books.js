@@ -7,28 +7,17 @@ exports.createBook = async (req, res, next) => {
   // S'assurer que le dossier uploads existe, sinon il est créé
   const uploadPath = "./uploads";
   if (!fs.existsSync(uploadPath)) {
-    fs.mkdirSync(uploadPath, { recursive: true });
+    fs.mkdirSync(uploadPath);
   }
-  // Changer le nom de l'image et le format
-  let imageUrl;
-  if (req.file) {
-    const file = req.file;
-    const timestamp = new Date().toISOString().replace(/:/g, "-");
-    const newFilename = `${timestamp}-${file.originalname}.webp`;
 
-    // Compresser l'image avec Sharp
-    try {
-      await sharp(file.buffer)
-        .webp({ quality: 20 })
-        .toFile(`${uploadPath}/${newFilename}`);
-      imageUrl = `${req.protocol}://${req.get("host")}/uploads/${newFilename}`;
-    } catch (error) {
-      return res.status(500).json({
-        message: "Problème lors de la compression de l'image",
-        error: error.message,
-      });
-    }
-  }
+  // Changer le nom de l'image et le format
+  const { buffer, originalname } = req.file;
+  const timestamp = new Date().toISOString();
+  const ref = `${timestamp}-${originalname}.webp`;
+
+  // Compresser l'image avec Sharp
+  await sharp(buffer).webp({ quality: 20 }).toFile(`${uploadPath}/${ref}`);
+  const imageUrl = `${req.protocol}://${req.get("host")}/uploads/${ref}`;
 
   const bookObject = req.body.book ? JSON.parse(req.body.book) : {};
   delete bookObject._id; // supprime champs inutiles ou sensibles
@@ -41,21 +30,28 @@ exports.createBook = async (req, res, next) => {
     imageUrl: imageUrl,
   });
 
-  // Sauvegarder le livre dans la base de données
   try {
-    await book.save();
-    res.status(201).json({ message: "Votre livre a bien été enregistré !" });
+    // Sauvegarder le livre dans la base de données
+    const savedBook = await book.save();
+
+    // Envoyer la réponse avec le message et l'objet du livre sauvegardé
+    res.status(201).json({
+      message: "Votre livre a bien été enregistré !",
+      book: savedBook, // Envoi de l'objet livre complet, y compris l'ID
+    });
   } catch (error) {
-    res.status(400).json({ error });
+    // Gestion des erreurs en cas d'échec de la sauvegarde
+    res.status(400).json({ error: error.message });
   }
 };
 
 // Modifier un livre existant
 exports.modifyBook = async (req, res, next) => {
-  let bookObject = {};
+  let bookObject = {}; // initialise un objet vide
 
+  // si la requête contient un fichier (si l(utilisateur à téléversé un fichier)
   if (req.file) {
-    // S'assurer que le dossier uploads existe
+    // S'assurer que le dossier uploads existe, sinon il est créé
     const uploadPath = "./uploads";
     if (!fs.existsSync(uploadPath)) {
       fs.mkdirSync(uploadPath);
@@ -63,16 +59,16 @@ exports.modifyBook = async (req, res, next) => {
 
     const file = req.file;
     const timestamp = new Date().toISOString();
-    const newFilename = `${timestamp}-${file.originalname}.webp`;
+    const ref = `${timestamp}-${file.originalname}.webp`;
 
     // Compresser l'image avec Sharp
     await sharp(file.buffer)
       .webp({ quality: 20 })
-      .toFile(`${uploadPath}/${newFilename}`);
+      .toFile(`${uploadPath}/${ref}`);
 
     bookObject = {
       ...JSON.parse(req.body.book),
-      imageUrl: `${req.protocol}://${req.get("host")}/uploads/${newFilename}`,
+      imageUrl: `${req.protocol}://${req.get("host")}/uploads/${ref}`,
     };
   } else {
     bookObject = { ...req.body };
@@ -187,4 +183,41 @@ exports.rateBook = (req, res, next) => {
     })
     .then((updatedBook) => res.status(200).json(updatedBook))
     .catch((error) => res.status(500).json({ error }));
+};
+
+exports.bestRating = (req, res, next) => {
+  Book.aggregate([
+    {
+      // Calculer la note moyenne
+      $addFields: {
+        averageRating: { $avg: "$ratings.grade" },
+      },
+    },
+    {
+      // Trier par 'averageRating' dans un ordre décroissant
+      $sort: { averageRating: -1 },
+    },
+    {
+      // Limiter les résultats aux 3 meilleurs
+      $limit: 3,
+    },
+  ])
+    .then((books) => {
+      // Afficher les données
+      const response = books.map((book) => {
+        return {
+          id: book._id,
+          title: book.title,
+          author: book.author,
+          averageRating: book.averageRating,
+          imageUrl: book.imageUrl,
+          year: book.year,
+          genre: book.genre,
+        };
+      });
+      res.status(200).json(response);
+    })
+    .catch((error) => {
+      res.status(400).json({ error });
+    });
 };
