@@ -139,8 +139,13 @@ exports.getAllBooks = (req, res, next) => {
 };
 
 // Noter le livre
-exports.rateBook = (req, res, next) => {
-  Book.findOne({ _id: req.params.id }) // trouve le livre par son ID
+exports.rateBook = (req, res) => {
+  // Vérifie si un utilisateur est connecté
+  if (!req.auth || !req.auth.userId) {
+    // Si non, renvoie une réponse qui indique qu'aucune action n'a été prise
+    return res.status(401).json({ message: "Authentication required." });
+  }
+  Book.findByIdAndUpdate({ _id: req.params.id }) // trouve le livre par son ID
     .then((book) => {
       if (!book) {
         // Si le livre n'est pas trouvé
@@ -173,7 +178,7 @@ exports.rateBook = (req, res, next) => {
 
       // Mise à jour de la note moyenne du livre
       const totalRatings = book.ratings.reduce(
-        (acc, curr) => acc + curr.grade,
+        (acc, rating) => acc + rating.grade,
         0
       );
       book.averageRating = totalRatings / book.ratings.length;
@@ -188,36 +193,51 @@ exports.rateBook = (req, res, next) => {
 exports.bestRating = (req, res, next) => {
   Book.aggregate([
     {
-      // Calculer la note moyenne
+      $match: { "ratings.0": { $exists: true } },
+    },
+    {
       $addFields: {
         averageRating: { $avg: "$ratings.grade" },
       },
     },
     {
-      // Trier par 'averageRating' dans un ordre décroissant
       $sort: { averageRating: -1 },
     },
     {
-      // Limiter les résultats aux 3 meilleurs
       $limit: 3,
     },
   ])
     .then((books) => {
-      // Afficher les données
-      const response = books.map((book) => {
-        return {
-          id: book._id,
-          title: book.title,
-          author: book.author,
-          averageRating: book.averageRating,
-          imageUrl: book.imageUrl,
-          year: book.year,
-          genre: book.genre,
-        };
-      });
-      res.status(200).json(response);
+      // S'assurer que chaque livre a un ID
+      const booksWithId = books.filter((book) => book._id);
+
+      // Convertir les _id en chaînes de caractères et renommer en 'id'
+      const formattedBooks = booksWithId.map((book) => ({
+        _id: book._id.toString(), // Convertir l'ObjectId en chaîne de caractères
+        title: book.title,
+        author: book.author,
+        averageRating: book.averageRating,
+        imageUrl: book.imageUrl,
+        year: book.year,
+        genre: book.genre,
+      }));
+
+      const undefinedBooks = formattedBooks.filter((book) => !book._id);
+      if (undefinedBooks.length > 0) {
+        console.log("Books with undefined id:", undefinedBooks);
+      }
+
+      // Vérifier s'il y a des doublons dans les 'id'
+      const uniqueIds = new Set(formattedBooks.map((book) => book._id));
+      if (uniqueIds.size !== formattedBooks.length) {
+        console.log("Duplicate ids found:", formattedBooks);
+      }
+
+      // Envoyer les livres formatés
+      res.status(200).json(formattedBooks);
     })
     .catch((error) => {
-      res.status(400).json({ error });
+      // Gérer les erreurs
+      res.status(500).json({ message: "Erreur serveur", error: error.message });
     });
 };

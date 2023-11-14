@@ -1,23 +1,28 @@
+// pour token dans fichier .env
+require("dotenv").config();
+
 const express = require("express");
 const mongoose = require("mongoose");
-
-const path = require("path");
 
 const booksRoutes = require("./routes/books");
 const userRoutes = require("./routes/user");
 
+// Connexion a MongoDB
 mongoose
-  .connect(
-    "mongodb+srv://lomi9:IqqNuV8HpkV8tHL6@cluster0.0g6zg3e.mongodb.net/?retryWrites=true&w=majority",
-    { useNewUrlParser: true, useUnifiedTopology: true }
-  )
+  .connect(process.env.DB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
   .then(() => console.log("Connexion à MongoDB réussie !"))
   .catch(() => console.log("Connexion à MongoDB échouée !"));
 
+// Créé une application Express
 const app = express();
 
+// Middleware pour analyser requêtes entrantes en JSON
 app.use(express.json());
 
+// Middleware pour les CORS
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader(
@@ -31,8 +36,10 @@ app.use((req, res, next) => {
   next();
 });
 
+// Fichiers statiques via le préfixe /upload dans l'URL
 app.use("/uploads", express.static("uploads"));
 
+// Middleware de routage :définition des chemins d'accès pour l'API
 app.use("/api/books", booksRoutes);
 app.use("/api/auth", userRoutes);
 
