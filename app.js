@@ -43,4 +43,5 @@ app.use("/uploads", express.static("uploads"));
 app.use("/api/books", booksRoutes);
 app.use("/api/auth", userRoutes);
 
+// Rendre l'application disponible
 module.exports = app;

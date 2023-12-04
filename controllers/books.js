@@ -10,13 +10,14 @@ exports.createBook = async (req, res, next) => {
     fs.mkdirSync(uploadPath);
   }
 
-  // Changer le nom de l'image et le format
+  // Changer le nom de l'image et le format avec sharp
   const { buffer, originalname } = req.file;
   const timestamp = new Date().toISOString();
   const ref = `${timestamp}-${originalname}.webp`;
 
   // Compresser l'image avec Sharp
   await sharp(buffer).webp({ quality: 20 }).toFile(`${uploadPath}/${ref}`);
+
   const imageUrl = `${req.protocol}://${req.get("host")}/uploads/${ref}`;
 
   const bookObject = req.body.book ? JSON.parse(req.body.book) : {};
@@ -57,7 +58,9 @@ exports.modifyBook = async (req, res, next) => {
       fs.mkdirSync(uploadPath);
     }
 
+    // récupère le fichier
     const file = req.file;
+    //modifie le nom et format du fichier
     const timestamp = new Date().toISOString();
     const ref = `${timestamp}-${file.originalname}.webp`;
 
@@ -66,11 +69,13 @@ exports.modifyBook = async (req, res, next) => {
       .webp({ quality: 20 })
       .toFile(`${uploadPath}/${ref}`);
 
+    //met a jour l'image
     bookObject = {
       ...JSON.parse(req.body.book),
       imageUrl: `${req.protocol}://${req.get("host")}/uploads/${ref}`,
     };
   } else {
+    // si pas d'image : on recupère les autres données et on les garde telles quelles
     bookObject = { ...req.body };
   }
 
@@ -81,15 +86,15 @@ exports.modifyBook = async (req, res, next) => {
       if (book.userId != req.auth.userId) {
         res.status(401).json({ message: "Non-autorisé" });
       } else {
+        // Si il y avait une ancienne image, elle est supprimée
         if (req.file) {
           const filename = book.imageUrl.split("/uploads/")[1];
           fs.unlink(`uploads/${filename}`, (err) => {
             if (err) console.log(err);
-            // Si il y avait une ancienne image, elle est supprimée
           });
         }
 
-        // Mise à jour du livre avec les nouvelles valeurs, cela fonctionne avec ou sans nouvelle image
+        // Mise à jour du livre avec les nouvelles données
         Book.updateOne(
           { _id: req.params.id },
           { ...bookObject, _id: req.params.id }
@@ -109,9 +114,12 @@ exports.deleteBook = (req, res, next) => {
       if (book.userId != req.auth.userId) {
         res.status(401).json({ message: "Non-autorisé" });
       } else {
-        const filename = book.imageUrl.split("/images/")[1]; // trouve l'image associée au livre
+        // trouve l'image associée au livre
+        const filename = book.imageUrl.split("/images/")[1];
+        // supprime l'image associée au livre
         fs.unlink(`images/${filename}`, () => {
-          Book.deleteOne({ _id: req.params.id }) // supprime le livre
+          // supprime le livre
+          Book.deleteOne({ _id: req.params.id })
             .then(() => {
               res.status(200).json({ message: "Objet supprimé !" });
             })
@@ -192,26 +200,30 @@ exports.rateBook = (req, res) => {
 
 exports.bestRating = (req, res, next) => {
   Book.aggregate([
+    // séléctionne que les livres qui ont une note
     {
       $match: { "ratings.0": { $exists: true } },
     },
+    // ajoute le champs 'averageRating' à chaque livre qui a une note, puis fait la moyenne de la note de chaque livre
     {
       $addFields: {
         averageRating: { $avg: "$ratings.grade" },
       },
     },
+    // trie les livres en ordre décroissant de averageRating
     {
       $sort: { averageRating: -1 },
     },
+    // limite les résultats à 3, prends donc les 3 avec la moyenne la plus haute
     {
       $limit: 3,
     },
   ])
     .then((books) => {
-      // S'assurer que chaque livre a un ID
+      // Vérifie que chaque livre a un ID
       const booksWithId = books.filter((book) => book._id);
 
-      // Convertir les _id en chaînes de caractères et renommer en 'id'
+      // map :  transforme chaque livre en un nouvel objet
       const formattedBooks = booksWithId.map((book) => ({
         _id: book._id.toString(), // Convertir l'ObjectId en chaîne de caractères
         title: book.title,
@@ -224,20 +236,19 @@ exports.bestRating = (req, res, next) => {
 
       const undefinedBooks = formattedBooks.filter((book) => !book._id);
       if (undefinedBooks.length > 0) {
-        console.log("Books with undefined id:", undefinedBooks);
+        console.log("Livres avec identifiants incorrects", undefinedBooks);
       }
 
       // Vérifier s'il y a des doublons dans les 'id'
       const uniqueIds = new Set(formattedBooks.map((book) => book._id));
       if (uniqueIds.size !== formattedBooks.length) {
-        console.log("Duplicate ids found:", formattedBooks);
+        console.log("Doublons ID :", formattedBooks);
       }
 
-      // Envoyer les livres formatés
+      // Envoyer les nouveaux livres
       res.status(200).json(formattedBooks);
     })
     .catch((error) => {
-      // Gérer les erreurs
       res.status(500).json({ message: "Erreur serveur", error: error.message });
     });
 };
