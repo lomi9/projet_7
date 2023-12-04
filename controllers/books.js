@@ -42,7 +42,7 @@ exports.createBook = async (req, res, next) => {
     });
   } catch (error) {
     // Gestion des erreurs en cas d'échec de la sauvegarde
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ error });
   }
 };
 
@@ -83,13 +83,17 @@ exports.modifyBook = async (req, res, next) => {
 
   Book.findOne({ _id: req.params.id })
     .then((book) => {
+      // Vérifie que l'utilisateur qui fait la requête est bien le propriétaire du livre
       if (book.userId != req.auth.userId) {
-        res.status(401).json({ message: "Non-autorisé" });
+        const error = new Error("Non-autorisé");
+        res.status(401).json({ error });
       } else {
         // Si il y avait une ancienne image, elle est supprimée
         if (req.file) {
+          // Extraction du nom de fichier depuis l'url de l'image
           const filename = book.imageUrl.split("/uploads/")[1];
           fs.unlink(`uploads/${filename}`, (err) => {
+            // le callback reçoit "err" pour gérer les erreurs lors de la suppression, convention standart en node.js pour les erreurs dans callbacks
             if (err) console.log(err);
           });
         }
@@ -112,7 +116,8 @@ exports.deleteBook = (req, res, next) => {
     .then((book) => {
       // Vérifie que l'utilisateur est autorisé (créateur du livre)
       if (book.userId != req.auth.userId) {
-        res.status(401).json({ message: "Non-autorisé" });
+        const error = new Error("Non-autorisé");
+        res.status(401).json({ error });
       } else {
         // trouve l'image associée au livre
         const filename = book.imageUrl.split("/images/")[1];
@@ -123,7 +128,7 @@ exports.deleteBook = (req, res, next) => {
             .then(() => {
               res.status(200).json({ message: "Objet supprimé !" });
             })
-            .catch((error) => res.status(401).json({ error }));
+            .catch((error) => res.status(500).json({ error }));
         });
       }
     })
@@ -150,14 +155,15 @@ exports.getAllBooks = (req, res, next) => {
 exports.rateBook = (req, res) => {
   // Vérifie si un utilisateur est connecté
   if (!req.auth || !req.auth.userId) {
-    // Si non, renvoie une réponse qui indique qu'aucune action n'a été prise
-    return res.status(401).json({ message: "Authentication required." });
+    const error = new Error("Authentication required.");
+    return res.status(401).json({ error: error.message });
   }
   Book.findByIdAndUpdate({ _id: req.params.id }) // trouve le livre par son ID
     .then((book) => {
       if (!book) {
         // Si le livre n'est pas trouvé
-        return res.status(404).json({ message: "Livre non trouvé!" });
+        const error = new Error("Livre non trouvé!");
+        return res.status(404).json({ error: error.message });
       }
 
       // Vérifie si l'utilisateur a déjà noté ce livre
@@ -165,17 +171,17 @@ exports.rateBook = (req, res) => {
         (rating) => rating.userId === req.auth.userId
       );
       if (existingRating) {
-        return res
-          .status(400)
-          .json({ message: "Vous avez déjà noté ce livre!" });
+        const error = new Error("Vous avez déjà noté ce livre!");
+        return res.status(400).json({ error: error.message });
       }
 
       // Vérifie la validité de la note
       const userRating = req.body.rating;
       if (userRating < 0 || userRating > 5) {
-        return res.status(400).json({
-          message: "Note invalide. Elle doit être comprise entre 0 et 5.",
-        });
+        const error = new Error(
+          "Note invalide. Elle doit être comprise entre 0 et 5."
+        );
+        return res.status(400).json({ error: error.message });
       }
 
       // Ajouter la note de l'utilisateur à la liste des notations
@@ -234,6 +240,7 @@ exports.bestRating = (req, res, next) => {
         genre: book.genre,
       }));
 
+      // gestion en cas d'anomalies liées à l'id
       const undefinedBooks = formattedBooks.filter((book) => !book._id);
       if (undefinedBooks.length > 0) {
         console.log("Livres avec identifiants incorrects", undefinedBooks);
@@ -249,6 +256,6 @@ exports.bestRating = (req, res, next) => {
       res.status(200).json(formattedBooks);
     })
     .catch((error) => {
-      res.status(500).json({ message: "Erreur serveur", error: error.message });
+      res.status(500).json({ error });
     });
 };

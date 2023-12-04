@@ -30,31 +30,29 @@ exports.login = (req, res, next) => {
     .then((user) => {
       // Si utilisateur inconnu
       if (user === null) {
-        res
-          .status(401)
-          .json({ message: "Paire identifiant/ mot de passe incorrecte" });
-      } else {
-        // Si utilisateur connu : vérification du mot de passe avec bcrypt
-        bcrypt
-          .compare(req.body.password, user.password)
-          .then((valid) => {
-            if (!valid) {
-              res.status(401).json({
-                message: "Paire identifiant/ mot de passe incorrecte",
-              });
-            } else {
-              res.status(200).json({
-                userId: user._id,
-                token: jwt.sign({ userId: user._id }, "RANDOM_TOKEN_SECRET", {
-                  expiresIn: "24h",
-                }),
-              });
-            }
-          })
-          .catch((error) => {
-            res.status(500).json({ error });
-          });
+        const error = new Error("Paire identifiant/ mot de passe incorrecte");
+        res.status(401).json({ error: error.message });
       }
+      // Si utilisateur connu : vérification du mot de passe avec bcrypt
+      bcrypt
+        .compare(req.body.password, user.password)
+        .then((valid) => {
+          if (!valid) {
+            const error = new Error(
+              "Paire identifiant/mot de passe incorrecte"
+            );
+            return res.status(401).json({ error: error.message });
+          }
+          res.status(200).json({
+            userId: user._id,
+            token: jwt.sign({ userId: user._id }, "RANDOM_TOKEN_SECRET", {
+              expiresIn: "24h",
+            }),
+          });
+        })
+        .catch((error) => {
+          res.status(500).json({ error });
+        });
     })
     .catch((error) => {
       res.status(500).json({ error });

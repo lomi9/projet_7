@@ -14,7 +14,7 @@ mongoose
     useUnifiedTopology: true,
   })
   .then(() => console.log("Connexion à MongoDB réussie !"))
-  .catch(() => console.log("Connexion à MongoDB échouée !"));
+  .catch(() => console.log(error));
 
 // Créé une application Express
 const app = express();
